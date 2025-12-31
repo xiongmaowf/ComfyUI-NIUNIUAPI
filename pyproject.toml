@@ -1,0 +1,15 @@
+[project]
+name = "ComfyUI-NIUNIUAPI"
+description = "ComfyUI-NIUNIUAPI is a professional API call node designed to facilitate the rapid construction and efficient integration of ComfyUI API workflows."
+version = "1.0.1"
+license = { file = "LICENSE" }
+
+[project.urls]
+Repository = "https://github.com/xiongmaowf/ComfyUI-NIUNIUAPI"
+
+[tool.comfy]
+PublisherId = "xiongmaowf"
+DisplayName = "ComfyUI-NIUNIUAPI"
+Icon = ""
+Banner = ""
+

@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.env.local
+.env.*
+
+# Secrets
+api_keys.json
+secrets.yaml
+config.json
+
+# IDE
+.vscode/
+.idea/
+.trae/
+
+# OS
+.DS_Store
+Thumbs.db
