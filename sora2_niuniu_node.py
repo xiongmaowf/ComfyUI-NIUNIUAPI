@@ -10,7 +10,11 @@ import requests
 from PIL import Image
 import torch
 import comfy.utils
-from comfy.comfy_types import IO
+try:
+    from comfy.comfy_types import IO
+    VIDEO_TYPE = getattr(IO, "VIDEO", "VIDEO")
+except Exception:
+    VIDEO_TYPE = "VIDEO"
 
 
 def tensor2pil(image_tensor: torch.Tensor) -> Optional[Image.Image]:
@@ -112,7 +116,7 @@ class NiuNiuSora2VideoNode:
             },
         }
 
-    RETURN_TYPES = (IO.VIDEO, "STRING", "STRING")
+    RETURN_TYPES = (VIDEO_TYPE, "STRING", "STRING")
     RETURN_NAMES = ("视频", "视频URL", "响应信息")
     FUNCTION = "generate_video"
     CATEGORY = "NIUNIUAPI"
@@ -658,7 +662,7 @@ class NiuNiuVeo31VideoNode:
             },
         }
 
-    RETURN_TYPES = (IO.VIDEO, "STRING", "STRING")
+    RETURN_TYPES = (VIDEO_TYPE, "STRING", "STRING")
     RETURN_NAMES = ("视频", "视频URL", "响应信息")
     FUNCTION = "generate_video"
     CATEGORY = "NIUNIUAPI"
