@@ -1,8 +1,9 @@
 [project]
 name = "ComfyUI-NIUNIUAPI"
 description = "ComfyUI-NIUNIUAPI is a professional API call node designed to facilitate the rapid construction and efficient integration of ComfyUI API workflows."
-version = "1.0.5"
+version = "1.0.6"
 license = { file = "LICENSE" }
+dependencies = ["requests", "pillow", "numpy"]
 
 [project.urls]
 Repository = "https://github.com/xiongmaowf/ComfyUI-NIUNIUAPI"
