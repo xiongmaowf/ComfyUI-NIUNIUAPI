@@ -84,7 +84,13 @@ class NewApiBanana2Node:
                 ),
                 "🎲 随机种子": (
                     "INT",
-                    {"default": 0, "min": 0, "max": 2147483647, "tooltip": "随机种子"},
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 18446744073709551615,
+                        "control_after_generate": "randomize",
+                        "tooltip": "随机种子",
+                    },
                 ),
                 "🖼️ 出图数量": (
                     "INT",
