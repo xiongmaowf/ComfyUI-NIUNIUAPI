@@ -630,10 +630,7 @@ class NiuNiuVeo31VideoNode:
         return {
             "required": {
                 "📝 提示词": ("STRING", {"multiline": True, "default": "女人在天上飞"}),
-                "🤖 模型": (
-                    ["veo3.1", "veo3.1-pro"],
-                    {"default": "veo3.1"},
-                ),
+                "🤖 模型": ("STRING", {"default": "veo_3_1-fast", "multiline": False}),
                 "🌐 API地址": (
                     "STRING",
                     {
@@ -736,7 +733,7 @@ class NiuNiuVeo31VideoNode:
 
     def generate_video(self, **kwargs):
         prompt = kwargs.get("📝 提示词", "") or ""
-        model = str(kwargs.get("🤖 模型", "veo3.1") or "").strip()
+        model = str(kwargs.get("🤖 模型", "veo_3_1-fast") or "").strip()
         api_base = kwargs.get("🌐 API地址", "")
         api_key = self._normalize_api_key(kwargs.get("🔑 API密钥", ""))
         aspect_ratio = str(kwargs.get("📐 宽高比", "Auto") or "Auto").strip()
