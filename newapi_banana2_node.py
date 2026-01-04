@@ -87,7 +87,7 @@ class NewApiBanana2Node:
                     {
                         "default": 0,
                         "min": 0,
-                        "max": 18446744073709551615,
+                        "max": 2147483647,
                         "control_after_generate": "randomize",
                         "tooltip": "随机种子",
                     },
