@@ -99,7 +99,13 @@ class NiuNiuSora2VideoNode:
                 "🎬 高清模式": ("BOOLEAN", {"default": False}),
                 "🎰 随机种子": (
                     "INT",
-                    {"default": -1, "min": -1, "max": 2147483647, "step": 1},
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 2147483647,
+                        "step": 1,
+                        "control_after_generate": "randomize",
+                    },
                 ),
                 "🎯 种子控制": (["随机", "固定", "递增"], {"default": "随机"}),
                 "🔐 隐私模式": ("BOOLEAN", {"default": False}),
@@ -645,7 +651,13 @@ class NiuNiuVeo31VideoNode:
                 "🎬 高清模式": ("BOOLEAN", {"default": False}),
                 "🎰 随机种子": (
                     "INT",
-                    {"default": -1, "min": -1, "max": 2147483647, "step": 1},
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 2147483647,
+                        "step": 1,
+                        "control_after_generate": "randomize",
+                    },
                 ),
                 "⏳ 超时等待(秒)": (
                     "INT",
@@ -739,7 +751,7 @@ class NiuNiuVeo31VideoNode:
         aspect_ratio = str(kwargs.get("📐 宽高比", "Auto") or "Auto").strip()
         seconds = int(kwargs.get("⏱️ 视频时长(秒)", 8) or 8)
         hd = bool(kwargs.get("🎬 高清模式", False))
-        seed = int(kwargs.get("🎰 随机种子", -1) or -1)
+        seed = int(kwargs.get("🎰 随机种子", 0) or 0)
         max_wait_seconds = int(kwargs.get("⏳ 超时等待(秒)", 600) or 600)
 
         first_frame = kwargs.get("首帧图")
@@ -796,7 +808,7 @@ class NiuNiuVeo31VideoNode:
         if hd:
             data["quality"] = "high"
 
-        if seed >= 0:
+        if seed > 0:
             data["seed"] = int(seed)
 
         image_files = []
@@ -833,11 +845,17 @@ class NiuNiuVeo31VideoNode:
             if time.monotonic() - start_ts >= max_wait_seconds:
                 break
             time.sleep(5)
-            poll = requests.get(
-                f"{base_url_v1}/videos/{video_id}",
-                headers=base_headers,
-                timeout=self.timeout,
-            )
+            poll = None
+            for _ in range(3):
+                try:
+                    poll = requests.get(
+                        f"{base_url_v1}/videos/{video_id}",
+                        headers=base_headers,
+                        timeout=self.timeout,
+                    )
+                    break
+                except requests.exceptions.RequestException:
+                    time.sleep(2)
             if poll.status_code != 200:
                 continue
             meta = poll.json()
@@ -867,7 +885,7 @@ class NiuNiuVeo31VideoNode:
             "seconds": str(max(1, seconds)),
             "model": model,
             "hd": hd,
-            "seed": seed if seed >= 0 else None,
+            "seed": seed if seed > 0 else None,
             "generationType": generation_type,
             "video_url": video_url,
             "raw": meta or result,
