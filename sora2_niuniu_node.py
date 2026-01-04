@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import random
 import tempfile
 import time
@@ -899,11 +900,414 @@ class NiuNiuVeo31VideoNode:
         )
 
 
+class NiuNiuSora2CharacterCreateNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "🎞️ 视频URL": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "tooltip": "填写可访问的视频URL（http/https）。",
+                    },
+                ),
+                "🕒 时间戳": ("STRING", {"default": "1,3", "multiline": False}),
+                "🎰 随机种子": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 2147483647,
+                        "step": 1,
+                        "control_after_generate": "randomize",
+                    },
+                ),
+                "🌐 API地址": (
+                    "STRING",
+                    {
+                        "default": "https://api.llyapps.com",
+                        "multiline": False,
+                        "tooltip": "默认使用 https://api.llyapps.com，也可填写其他支持NewAPI的服务商地址",
+                    },
+                ),
+                "🤖 模型名称": (
+                    "STRING",
+                    {
+                        "default": "sora-2-character",
+                        "multiline": False,
+                        "tooltip": "模型名称，例如 sora-2-character",
+                    },
+                ),
+                "🔑 API密钥": ("STRING", {"default": "", "multiline": False}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("角色ID", "用户名", "主页链接", "头像URL", "响应信息")
+    FUNCTION = "create_character"
+    CATEGORY = "NIUNIUAPI"
+
+    def __init__(self):
+        self.timeout = 300
+
+    def _normalize_root_url(self, base_url: str) -> str:
+        url = str(base_url or "").strip()
+        if not url:
+            return ""
+        url = url.strip("`").strip().strip('"').strip("'")
+        url = url.split("?", 1)[0].rstrip("/")
+        lower = url.lower()
+        sora_v1_pos = lower.find("/sora/v1")
+        if sora_v1_pos >= 0:
+            return url[:sora_v1_pos]
+        v1_pos = lower.find("/v1")
+        if v1_pos >= 0:
+            return url[:v1_pos]
+        return url
+    
+    def _normalize_base_url(self, base_url: str) -> str:
+        url = str(base_url or "").strip()
+        if not url:
+            return ""
+        url = url.strip("`").strip().strip('"').strip("'")
+        url = url.split("?", 1)[0].rstrip("/")
+        lower = url.lower()
+        v1_pos = lower.find("/v1")
+        if v1_pos >= 0:
+            return url[: v1_pos + 3]
+        return f"{url}/v1"
+
+    def _normalize_api_key(self, api_key: str) -> str:
+        k = str(api_key or "").strip()
+        if not k:
+            return ""
+        k = k.strip("`").strip().strip('"').strip("'")
+        if ":" in k and k.lower().startswith("authorization"):
+            k = k.split(":", 1)[1].strip()
+        if k.lower().startswith("bearer "):
+            k = k[7:].strip()
+        return k
+    
+    def _safe_json(self, resp: requests.Response, context: str) -> dict:
+        text = resp.text or ""
+        if not text.strip():
+            raise ValueError(f"{context}：API响应为空（HTTP {resp.status_code}）")
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                return data
+            return {"data": data}
+        except Exception:
+            try:
+                data = json.loads(text)
+                if isinstance(data, dict):
+                    return data
+                return {"data": data}
+            except Exception:
+                snippet = text.strip().replace("\r", " ").replace("\n", " ")
+                if len(snippet) > 800:
+                    snippet = snippet[:800] + "..."
+                raise ValueError(f"{context}：API响应不是JSON（HTTP {resp.status_code}）{snippet}")
+    
+    def _extract_openai_message_text(self, payload: dict) -> str:
+        if not isinstance(payload, dict):
+            return ""
+        choices = payload.get("choices")
+        if isinstance(choices, list) and choices:
+            c0 = choices[0] if isinstance(choices[0], dict) else {}
+            msg = c0.get("message") if isinstance(c0.get("message"), dict) else {}
+            if isinstance(msg.get("content"), str) and msg.get("content").strip():
+                return msg.get("content").strip()
+            delta = c0.get("delta") if isinstance(c0.get("delta"), dict) else {}
+            if isinstance(delta.get("content"), str) and delta.get("content").strip():
+                return delta.get("content").strip()
+        return ""
+    
+    def _parse_character_payload(self, payload: dict) -> dict:
+        if not isinstance(payload, dict):
+            return {}
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+        if isinstance(data.get("id"), str) or data.get("id"):
+            return data
+        text = self._extract_openai_message_text(payload)
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_video_to_temp(self, video) -> str:
+        f = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        f.close()
+        tmp_path = f.name
+        if isinstance(video, str) and video.strip():
+            src_path = video.strip()
+            if not os.path.exists(src_path):
+                try:
+                    import folder_paths
+
+                    src_path = folder_paths.get_annotated_filepath(
+                        src_path, default_dir=folder_paths.get_input_directory()
+                    )
+                except Exception:
+                    pass
+            with open(src_path, "rb") as src, open(tmp_path, "wb") as dst:
+                dst.write(src.read())
+            return tmp_path
+        if hasattr(video, "save_to") and callable(getattr(video, "save_to")):
+            try:
+                ok = video.save_to(tmp_path)
+            except TypeError:
+                ok = video.save_to(output_path=tmp_path)
+            if ok is False:
+                raise ValueError("上传视频保存失败")
+            if (not os.path.exists(tmp_path)) or os.path.getsize(tmp_path) <= 0:
+                raise ValueError("上传视频保存失败")
+            return tmp_path
+        if isinstance(video, dict):
+            path = (
+                video.get("path")
+                or video.get("video_path")
+                or video.get("file")
+                or video.get("filepath")
+                or ""
+            )
+            if isinstance(path, str) and path.strip():
+                src_path = path.strip()
+                if not os.path.exists(src_path):
+                    try:
+                        import folder_paths
+
+                        src_path = folder_paths.get_annotated_filepath(
+                            src_path, default_dir=folder_paths.get_input_directory()
+                        )
+                    except Exception:
+                        pass
+                with open(src_path, "rb") as src, open(tmp_path, "wb") as dst:
+                    dst.write(src.read())
+                return tmp_path
+
+            filename = (video.get("filename") or video.get("name") or "").strip()
+            if filename:
+                subfolder = str(video.get("subfolder") or "").strip()
+                file_type = str(video.get("type") or "input").strip().lower()
+                src_path = filename
+                if subfolder:
+                    src_path = os.path.join(subfolder, filename)
+                try:
+                    import folder_paths
+
+                    if file_type == "temp":
+                        base_dir = folder_paths.get_temp_directory()
+                    elif file_type == "output":
+                        base_dir = folder_paths.get_output_directory()
+                    else:
+                        base_dir = folder_paths.get_input_directory()
+                    src_path = os.path.join(base_dir, src_path)
+                except Exception:
+                    pass
+                with open(src_path, "rb") as src, open(tmp_path, "wb") as dst:
+                    dst.write(src.read())
+                return tmp_path
+        raise ValueError("上传视频输入不支持")
+
+    def _upload_video_and_get_url(self, root_url: str, api_key: str, video) -> str:
+        tmp_path = self._save_video_to_temp(video)
+        try:
+            with open(tmp_path, "rb") as fp:
+                files = {"file": ("video.mp4", fp, "video/mp4")}
+                resp = requests.post(
+                    f"{root_url}/v1/files",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    files=files,
+                    timeout=self.timeout,
+                )
+            if resp.status_code != 200:
+                if resp.status_code == 401:
+                    raise ValueError(f"API鉴权失败(401)：API密钥无效/已过期/无权限，或API地址填错。{resp.text}")
+                raise ValueError(f"API Error: {resp.status_code} - {resp.text}")
+            data = resp.json()
+            url = (data.get("url") if isinstance(data, dict) else "") or ""
+            url = str(url).strip()
+            if not url:
+                raise ValueError(f"上传接口未返回url：{resp.text}")
+            return url
+        finally:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    def create_character(self, **kwargs):
+        video_url = str(kwargs.get("🎞️ 视频URL", "") or "").strip()
+        timestamps = str(kwargs.get("🕒 时间戳", "1,3") or "1,3").strip()
+        seed = int(kwargs.get("🎰 随机种子", 0) or 0)
+        api_base = str(kwargs.get("🌐 API地址", "") or "").strip()
+        model = str(kwargs.get("🤖 模型名称", "sora-2-character") or "sora-2-character").strip()
+        api_key = self._normalize_api_key(kwargs.get("🔑 API密钥", ""))
+
+        if not api_key:
+            raise ValueError("API密钥不能为空")
+        if not video_url or not video_url.startswith(("http://", "https://")):
+            raise ValueError("视频URL不能为空，且必须以 http:// 或 https:// 开头")
+        if not timestamps or "," not in timestamps:
+            raise ValueError("时间戳格式必须为 'start,end'（例如 '1,3'）")
+
+        try:
+            start_time, end_time = map(float, timestamps.split(",", 1))
+            duration = end_time - start_time
+            if duration < 1:
+                raise ValueError("时间戳时间差至少 1 秒")
+            if duration > 3:
+                raise ValueError("时间戳时间差最多 3 秒")
+        except ValueError:
+             raise ValueError("时间戳格式错误或数值无效")
+
+        root_url = self._normalize_root_url(api_base)
+        if not root_url:
+            raise ValueError("API地址不能为空")
+
+        pbar = comfy.utils.ProgressBar(100)
+        pbar.update_absolute(10)
+
+        # 构建 payload
+        payload = {
+            "model": model,
+            "url": video_url,
+            "timestamps": timestamps
+        }
+        if seed > 0:
+            payload["seed"] = int(seed)
+
+        pbar.update_absolute(30)
+
+        headers = {
+            "Authorization": f"Bearer {api_key}", 
+            "Content-Type": "application/json"
+        }
+        
+        # 参照 reference node 的 endpoint 路径
+        # 但由于 api.llyapps.com 的 sora-2-character 是通过 Chat 接口调用的
+        # 我们优先尝试 Chat 接口
+        
+        # 默认使用 Chat API 逻辑
+        url_chat = f"{root_url}/v1/chat/completions"
+        chat_payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": json.dumps({
+                        "url": video_url,
+                        "timestamps": timestamps,
+                        "seed": payload.get("seed", 0)
+                    })
+                }
+            ],
+            "stream": False
+        }
+
+        try:
+            print(f"DEBUG: Requesting Chat API {url_chat} with payload {json.dumps(chat_payload)}")
+            resp = requests.post(url_chat, headers=headers, json=chat_payload, timeout=self.timeout)
+            url = url_chat # 更新 url 变量以便错误提示正确
+            
+            pbar.update_absolute(60)
+            
+            print(f"DEBUG: Response Status: {resp.status_code}")
+            print(f"DEBUG: Response Text: {resp.text[:1000]}") # 打印前1000个字符用于调试
+
+            # 如果 Chat 接口失败 (404 或其他错误)，尝试 fallback 到原生的 sora 接口
+            # 但前提是 Chat 接口明确返回了 404，或者响应内容不是我们期望的
+            if resp.status_code == 404:
+                 url_fallback = f"{root_url}/sora/v1/characters"
+                 print(f"Chat Endpoint {url_chat} not found (404), trying fallback: {url_fallback}")
+                 resp_fallback = requests.post(url_fallback, headers=headers, json=payload, timeout=self.timeout)
+                 if resp_fallback.status_code != 404:
+                     resp = resp_fallback
+                     url = url_fallback
+                     # 清除 chat 标记
+                     is_chat_response = False
+                 else:
+                     # 还是不行，尝试 v1/sora
+                     url_fallback_2 = f"{root_url}/v1/sora/characters"
+                     print(f"Endpoint {url_fallback} not found (404), trying fallback: {url_fallback_2}")
+                     resp_fallback_2 = requests.post(url_fallback_2, headers=headers, json=payload, timeout=self.timeout)
+                     if resp_fallback_2.status_code != 404:
+                         resp = resp_fallback_2
+                         url = url_fallback_2
+                         is_chat_response = False
+            else:
+                is_chat_response = True
+
+            
+            print(f"DEBUG: Response Status: {resp.status_code}")
+            print(f"DEBUG: Response Text: {resp.text[:1000]}") # 打印前1000个字符用于调试
+
+            if resp.status_code != 200:
+                try:
+                    err_json = resp.json()
+                    err_msg = err_json.get("message") or err_json.get("error", {}).get("message") or resp.text
+                except:
+                    err_msg = resp.text
+                raise ValueError(f"API Error ({resp.status_code}): {err_msg}")
+
+            try:
+                result = resp.json()
+            except json.JSONDecodeError:
+                 raise ValueError(f"API请求成功(200 OK)但返回了HTML而非JSON。这通常意味着API地址错误。\n请求URL: {url}\n响应预览: {resp.text[:200]}")
+            
+            pbar.update_absolute(90)
+
+            # 如果是 Chat API 响应，需要提取其中的 content 并尝试解析
+            if locals().get("is_chat_response"):
+                parsed = self._parse_character_payload(result)
+                if parsed:
+                    result = parsed
+                else:
+                    # 如果解析失败，可能只是普通文本返回，或者格式不对
+                    # 尝试直接返回文本信息作为 debug
+                    pass
+
+            # 提取字段 (参照 reference node)
+            character_id = result.get("id", "") or result.get("character_id", "")
+            username = result.get("username", "")
+            permalink = result.get("permalink", "")
+            profile_picture_url = result.get("profile_picture_url", "")
+            
+            # 如果直接提取失败，尝试从 data 字段获取 (常见 API 包裹)
+            if not character_id and "data" in result and isinstance(result["data"], dict):
+                data_obj = result["data"]
+                character_id = data_obj.get("id", "")
+                username = data_obj.get("username", "")
+                permalink = data_obj.get("permalink", "")
+                profile_picture_url = data_obj.get("profile_picture_url", "")
+            
+            pbar.update_absolute(100)
+            
+            response_json = json.dumps(result, indent=2, ensure_ascii=False)
+            
+            if not character_id:
+                 # 如果真的没找到ID，但请求成功了，返回整个响应作为调试
+                 return ("", "", "", "", response_json)
+
+            return (str(character_id), str(username), str(permalink), str(profile_picture_url), response_json)
+
+        except Exception as e:
+            raise ValueError(f"创建角色失败: {str(e)}")
+
+
 NODE_CLASS_MAPPINGS = {
     "NiuNiuSora2VideoNode": NiuNiuSora2VideoNode,
     "NiuNiuVeo31VideoNode": NiuNiuVeo31VideoNode,
+    "NiuNiuSora2CharacterCreateNode": NiuNiuSora2CharacterCreateNode,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "NiuNiuSora2VideoNode": "🎨SORA2视频生成 NIUNIU",
     "NiuNiuVeo31VideoNode": "🫎NIUNIU API-Veo3.1视频生成",
+    "NiuNiuSora2CharacterCreateNode": "🫅sora2角色创建",
 }
